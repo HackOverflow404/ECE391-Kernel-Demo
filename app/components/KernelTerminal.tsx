@@ -55,6 +55,12 @@ export default function KernelTerminal() {
     const fitTimer = setTimeout(() => { try { fitAddon.fit(); } catch {} }, 50);
     termRef.current = term;
 
+    // ResizeObserver re-fits the terminal whenever the container size changes.
+    // This handles the iframe/lazy-load case where dimensions aren't known at 50ms,
+    // which would otherwise leave xterm using a default row count and clipping output.
+    const resizeObs = new ResizeObserver(() => { try { fitAddon.fit(); } catch {} });
+    resizeObs.observe(termDivRef.current!);
+
     // Provide the globals TinyEMU's lib.js expects
     window.term = {
       write: (s: string) => term.write(s),
@@ -124,6 +130,7 @@ export default function KernelTerminal() {
 
     return () => {
       clearTimeout(fitTimer);
+      resizeObs.disconnect();
       onKey.dispose();
       window.removeEventListener('resize', onResize);
       term.dispose();
