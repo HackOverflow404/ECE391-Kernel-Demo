@@ -151,7 +151,7 @@ export default function KernelTerminal() {
           <span className="text-[#555]">idle</span>
         )}
       </div>
-      <div ref={termDivRef} className="flex-1 p-2" />
+      <div ref={termDivRef} className="flex-1" />
     </div>
   );
 }
