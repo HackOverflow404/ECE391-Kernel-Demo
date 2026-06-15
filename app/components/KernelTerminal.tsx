@@ -51,14 +51,14 @@ export default function KernelTerminal() {
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
     term.open(termDivRef.current);
-    // Defer fit() — canvas renderer isn't ready synchronously
-    const fitTimer = setTimeout(() => { try { fitAddon.fit(); } catch {} }, 50);
+    // Fit at 50ms, 200ms, and 600ms — the canvas renderer isn't ready synchronously,
+    // and inside a lazy-loaded iframe the layout may not settle until well after mount.
+    const fit = () => { try { fitAddon.fit(); } catch {} };
+    const fitTimers = [50, 200, 600].map(d => setTimeout(fit, d));
     termRef.current = term;
 
-    // ResizeObserver re-fits the terminal whenever the container size changes.
-    // This handles the iframe/lazy-load case where dimensions aren't known at 50ms,
-    // which would otherwise leave xterm using a default row count and clipping output.
-    const resizeObs = new ResizeObserver(() => { try { fitAddon.fit(); } catch {} });
+    // ResizeObserver re-fits whenever the container size changes (e.g. modal resize).
+    const resizeObs = new ResizeObserver(fit);
     resizeObs.observe(termDivRef.current!);
 
     // Provide the globals TinyEMU's lib.js expects
@@ -129,7 +129,7 @@ export default function KernelTerminal() {
     window.addEventListener('resize', onResize);
 
     return () => {
-      clearTimeout(fitTimer);
+      fitTimers.forEach(clearTimeout);
       resizeObs.disconnect();
       onKey.dispose();
       window.removeEventListener('resize', onResize);
