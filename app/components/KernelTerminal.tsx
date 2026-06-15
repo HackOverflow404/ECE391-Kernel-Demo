@@ -51,21 +51,17 @@ export default function KernelTerminal() {
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
     term.open(termDivRef.current);
-    // fit() calls FitAddon then independently verifies the result.
-    // FitAddon uses getComputedStyle(parent).height (integer) and xterm's internal
-    // cell height; subpixel rounding can make it allocate 1-2 rows that don't visually
-    // fit.  We follow up with getBoundingClientRect (fractional-pixel accurate) and
-    // xterm's own _charSizeService measurement to compute the true safe row count.
-    const fit = () => {
-      try { fitAddon.fit(); } catch {}
+    // clampRows: after FitAddon runs, independently verify using _renderService
+    // (the same source FitAddon uses) and getBoundingClientRect (sub-pixel accurate).
+    // A 2px safety margin prevents the last row from being subpixel-clipped.
+    const clampRows = () => {
       const el = termDivRef.current;
       const t = termRef.current;
       if (!el || !t || t.rows < 2) return;
-      const containerH = el.getBoundingClientRect().height;
-      if (containerH === 0) return;
-      // Prefer xterm's own measured cell height; fall back to canvas ratio.
+      const containerH = el.getBoundingClientRect().height - 2;
+      if (containerH <= 0) return;
       let cellH = 0;
-      try { cellH = (t as any)._core._charSizeService.measurements.height ?? 0; } catch {}
+      try { cellH = (t as any)._core._renderService.dimensions.css.cell.height ?? 0; } catch {}
       if (!(cellH > 0)) {
         const canvas = el.querySelector('canvas') as HTMLCanvasElement | null;
         if (canvas && canvas.offsetHeight > 0) cellH = canvas.offsetHeight / t.rows;
@@ -74,12 +70,24 @@ export default function KernelTerminal() {
       const safeRows = Math.max(1, Math.floor(containerH / cellH));
       if (safeRows < t.rows) t.resize(t.cols, safeRows);
     };
-    // Multiple retries: cell dimensions are measured asynchronously by xterm after
-    // the first render frame; inside a lazy-loaded iframe this can be well past 600ms.
+
+    const fit = () => {
+      try { fitAddon.fit(); } catch {}
+      clampRows();
+    };
+
+    // Timer retries handle the case where cell dims aren't ready at mount time.
     const fitTimers = [50, 200, 600, 1500].map(d => setTimeout(fit, d));
     termRef.current = term;
 
-    // ResizeObserver re-fits whenever the container size changes (e.g. modal resize).
+    // onRender fires after xterm's FIRST actual render — cell dimensions are
+    // guaranteed non-zero at this point, making clampRows definitively correct.
+    const onFirstRender = term.onRender(() => {
+      onFirstRender.dispose();
+      clampRows();
+    });
+
+    // ResizeObserver re-fits whenever the container size changes.
     const resizeObs = new ResizeObserver(fit);
     resizeObs.observe(termDivRef.current!);
 
@@ -152,6 +160,7 @@ export default function KernelTerminal() {
 
     return () => {
       fitTimers.forEach(clearTimeout);
+      onFirstRender.dispose();
       resizeObs.disconnect();
       onKey.dispose();
       window.removeEventListener('resize', onResize);
