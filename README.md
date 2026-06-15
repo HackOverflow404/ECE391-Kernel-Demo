@@ -1,36 +1,43 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ECE391 Kernel Demo
 
-## Getting Started
+A RISC-V64 kernel my team built from scratch for UIUC's ECE391 (Computer Systems Engineering), running live in the browser via WebAssembly.
 
-First, run the development server:
+## What it is
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+The kernel implements:
+- VirtIO console driver (keyboard + terminal I/O)
+- VirtIO block device driver (filesystem over HTTP)
+- KTFS — a custom filesystem
+- Page-table-based virtual memory
+- Process scheduler
+- Full system call interface
+- Unix-style shell with N-stage pipeline support (`cmd1 | cmd2 | cmd3`)
+
+The browser embed compiles [TinyEMU](https://bellard.org/tinyemu/) (a RISC-V emulator by Fabrice Bellard) to WebAssembly using Emscripten. The filesystem is split into 64 × 128KB chunks served over HTTP and mounted via the VirtIO block device.
+
+## Try it
+
+```
+ls
+cat testfile2
+cat testfile2 | wc | cat
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Dev
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm install
+npm run dev
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Stack
 
-## Learn More
+- Next.js + TypeScript
+- xterm.js
+- TinyEMU compiled to WASM via Emscripten
+- Tailwind CSS
 
-To learn more about Next.js, take a look at the following resources:
+## Related
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- [Portfolio](https://hackoverflow404.github.io) — embedded as an iframe in the ECE391 project entry
+- [Kernel source](https://github.com/HackOverflow404/ece391-kernel-demo)
