@@ -51,30 +51,37 @@ export default function KernelTerminal() {
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
     term.open(termDivRef.current);
-    // Fit at 50ms, 200ms, and 600ms — the canvas renderer isn't ready synchronously,
-    // and inside a lazy-loaded iframe the layout may not settle until well after mount.
-    const fit = () => { try { fitAddon.fit(); } catch {} };
-    const fitTimers = [50, 200, 600].map(d => setTimeout(fit, d));
+    // fit() calls FitAddon then independently verifies the result.
+    // FitAddon uses getComputedStyle(parent).height (integer) and xterm's internal
+    // cell height; subpixel rounding can make it allocate 1-2 rows that don't visually
+    // fit.  We follow up with getBoundingClientRect (fractional-pixel accurate) and
+    // xterm's own _charSizeService measurement to compute the true safe row count.
+    const fit = () => {
+      try { fitAddon.fit(); } catch {}
+      const el = termDivRef.current;
+      const t = termRef.current;
+      if (!el || !t || t.rows < 2) return;
+      const containerH = el.getBoundingClientRect().height;
+      if (containerH === 0) return;
+      // Prefer xterm's own measured cell height; fall back to canvas ratio.
+      let cellH = 0;
+      try { cellH = (t as any)._core._charSizeService.measurements.height ?? 0; } catch {}
+      if (!(cellH > 0)) {
+        const canvas = el.querySelector('canvas') as HTMLCanvasElement | null;
+        if (canvas && canvas.offsetHeight > 0) cellH = canvas.offsetHeight / t.rows;
+      }
+      if (!(cellH > 0)) return;
+      const safeRows = Math.max(1, Math.floor(containerH / cellH));
+      if (safeRows < t.rows) t.resize(t.cols, safeRows);
+    };
+    // Multiple retries: cell dimensions are measured asynchronously by xterm after
+    // the first render frame; inside a lazy-loaded iframe this can be well past 600ms.
+    const fitTimers = [50, 200, 600, 1500].map(d => setTimeout(fit, d));
     termRef.current = term;
 
     // ResizeObserver re-fits whenever the container size changes (e.g. modal resize).
     const resizeObs = new ResizeObserver(fit);
     resizeObs.observe(termDivRef.current!);
-
-    // After every FitAddon resize, verify the rendered canvas actually fits.
-    // FitAddon's floor(containerH / cellH) can still produce 1-2 extra rows when
-    // the browser's subpixel canvas height differs from the CSS measurement it used.
-    // Reducing by 1 row here is safe and terminates: the next onResize re-checks,
-    // and once canvas.offsetHeight <= containerH the condition is false.
-    const onTermResize = term.onResize(() => {
-      const el = termDivRef.current;
-      if (!el || term.rows < 2) return;
-      const canvas = el.querySelector('canvas') as HTMLCanvasElement | null;
-      if (!canvas) return;
-      if (canvas.offsetHeight > Math.floor(el.getBoundingClientRect().height)) {
-        term.resize(term.cols, term.rows - 1);
-      }
-    });
 
     // Provide the globals TinyEMU's lib.js expects
     window.term = {
@@ -146,7 +153,6 @@ export default function KernelTerminal() {
     return () => {
       fitTimers.forEach(clearTimeout);
       resizeObs.disconnect();
-      onTermResize.dispose();
       onKey.dispose();
       window.removeEventListener('resize', onResize);
       term.dispose();
