@@ -61,6 +61,21 @@ export default function KernelTerminal() {
     const resizeObs = new ResizeObserver(fit);
     resizeObs.observe(termDivRef.current!);
 
+    // After every FitAddon resize, verify the rendered canvas actually fits.
+    // FitAddon's floor(containerH / cellH) can still produce 1-2 extra rows when
+    // the browser's subpixel canvas height differs from the CSS measurement it used.
+    // Reducing by 1 row here is safe and terminates: the next onResize re-checks,
+    // and once canvas.offsetHeight <= containerH the condition is false.
+    const onTermResize = term.onResize(() => {
+      const el = termDivRef.current;
+      if (!el || term.rows < 2) return;
+      const canvas = el.querySelector('canvas') as HTMLCanvasElement | null;
+      if (!canvas) return;
+      if (canvas.offsetHeight > Math.floor(el.getBoundingClientRect().height)) {
+        term.resize(term.cols, term.rows - 1);
+      }
+    });
+
     // Provide the globals TinyEMU's lib.js expects
     window.term = {
       write: (s: string) => term.write(s),
@@ -131,6 +146,7 @@ export default function KernelTerminal() {
     return () => {
       fitTimers.forEach(clearTimeout);
       resizeObs.disconnect();
+      onTermResize.dispose();
       onKey.dispose();
       window.removeEventListener('resize', onResize);
       term.dispose();
